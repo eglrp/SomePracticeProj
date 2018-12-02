@@ -1,0 +1,70 @@
+ - std::abs: 计算绝对值，包括整数类型；
+ - std::fabs: 计算绝对值，不包括整数类型；
+ - std::fma(x,y,z):x*y+z;
+ - std::sin: 正弦；
+ - std::asin: 反正弦；
+ - std::sinh: 双曲正弦；
+ - std::asinh: 双曲反正弦；
+ - std::cos: 余弦；
+ - std::acos: 反正弦；
+ - std::cosh: 双曲余弦；
+ - std::acosh: 双曲反余弦；
+ - std::tan：正切；
+ - std::atan：反正切；
+ - std::atan2: 反正切；
+ - std::tanh: 双曲正切；
+ - std::atanh: 双曲反正切；
+ - std::sqrt: 计算平方根；
+ - std::cbrt: 计算立方根；
+ - std::hypot: 计算两个数平方的和的平方根；
+ - std::pow：幂运算；
+ - std::ceil: 不小于给定值的最近整数；
+ - std::floor: 不大于给定值的最近整数；
+ - std::fmod: 两数除法操作的余数(rounded towards zero)；
+ - std::trunc: 不大于给定值的最近整数；
+ - std::round: 舍入取整；
+ - std::lround: 舍入取整, 返回long int；
+ - std::llround: 舍入取整, 返回long long int；
+ - std::nearbyint: 使用当前的舍入模式取整(fegetround())；
+ - std::remainder: 两数除法操作的余数(rounded to nearest)；
+ - std::remquo: 两数除法操作的余数；
+ - std::rint: 使用当前的舍入模式取整(fegetround())；
+ - std::lrint: 使用当前的舍入模式取整(fegetround()),返回long int；
+ - std::llrint: 使用当前的舍入模式取整(fegetround())，返回long longint；
+ - std::exp: ex;
+ - std::frexp: 将一个浮点数分解为有效数(significand)及以2为底的幂(x = significand* 2exp);
+ - std::ldexp: x *2exp;
+ - std::exp2: 2x;
+ - std::expm1: ex-1;
+ - std::scalbn: x *FLT_RADIXn;
+ - std::scalbln: x* FLT_RADIXn;
+ - std::log: ln(x);
+ - std::log10: log10(x);
+ - std::modf: 将一个浮点数分解为整数及小数部分；
+ - std::ilogb: 返回以FLT_RADIX为底，|x|的对数值，返回值为整数；
+ - std::log1p: ln(1+x);
+ - std::log2: log2(x);
+ - std::logb: 返回以FLT_RADIX为底，|x|的对数值，返回值为浮点数；
+ - std::erf: 误差函数；
+ - std::erfc: 互补(complementary)误差函数；
+ - std::tgamma: 伽玛函数；
+ - std::lgamma: log-伽玛函数；
+ - std::copysign(x,y):返回x的值及y的正负符号组成的浮点数；
+ - std::nan: Generatequiet NaN;
+ - std::nextafter(x,y): 返回x之后y方向上的下一个可表示值；
+ - std::nexttoward(x,y): 返回x之后y方向上的下一个可表示值；
+ - std::fdim(x,y): Thefunction returns x-y if x>y, and zero otherwise;
+ - std::fmax: 返回较大的值;
+ - std::fmin: 返回较小的值;
+ - std::fpclassify:为浮点值归类，返回一个类型为int的值；
+ - std::isfinite: 检测是否是有限值；
+ - std::isinf: 检测是否是无穷大值；
+ - std::isnan: 检测是否是非数型；
+ - std::isnormal: 检测是否是normal值，neitherinfinity, NaN, zero or subnormal；
+ - std::signbit: 检测是否是负数；
+ - std::isgreater: 检测第一个数是否大于第二个数；
+ - std::isgreaterequal:检测第一个数是否大于或等于第二个数；
+ - std::isless: 检测第一个数是否小于第二个数；
+ - std::islessequal:检测第一个数是否小于或等于第二个数；
+ - std::islessgreater:检测第一个数是否不等于第二个数；
+ - std::isunordered:检测两个浮点数是否是无序的.

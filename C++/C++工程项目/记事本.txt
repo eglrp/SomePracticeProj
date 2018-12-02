@@ -1,0 +1,93 @@
+**-----------------------------------------------------------**
+
+ > **更多请参考我的另一篇博客：[]()**
+
+
+### ....
+-----
+
+**问题描述**
+**解析**
+**实现**
+
+```c
+
+```
+
+**输出结果**
+
+```c
+
+```
+
+
+**-----------------------------------------------------------**
+
+
+一道Google top coder的850分例题及解答
+https://blog.csdn.net/Solstice/article/details/653418
+
+面试题1：连续整数之和为1000的共有几组？
+https://blog.csdn.net/Solstice/article/details/1217700
+
+
+
+**-----------------------------------------------------------**
+
+
+Sublime Text 3下C/C++开发环境搭建
+https://blog.csdn.net/dc_726/article/details/45749805
+
+关于Ubuntu使用Sublime Text3的SublimeClang插件进行C程序编写时的问题
+https://blog.csdn.net/qq_33475105/article/details/79232441
+
+点滴记录——Windows 7中安装Sublime Text 3、cynwin、SublimeClang
+https://blog.csdn.net/cywosp/article/details/34429697
+
+
+**-----------------------------------------------------------**
+
+Configured with: ../src/configure --with-gmp=/c/temp/gcc/gmp --with-mpfr=/c/temp/gcc/mpfr --with-mpc=/c/temp/gcc/mpc --enable-languages=c,c++ --build=x86_64-w64-mingw32 --host=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --disable-multilib --prefix=/c/temp/gcc/dest --with-sysroot=/c/temp/gcc/dest --disable-libstdcxx-pch --disable-nls --disable-shared --disable-win32-registry --enable-checking=release --with-tune=haswell
+Thread model: win32
+gcc version 5.2.0 (GCC)
+
+变长参数
+
+
+
+
+/*
+
+就是你们来的时候，陈霄表述不清楚，一会师姐一会师兄，我听得很乱
+那天晚上陈霄说你们在酒吧，我就去了，没想到还有个妹纸，难道是她师姐？
+然后知道你和那锤子是师门，还一届，豁然开朗，瞬间变成师兄
+然后就是我从没有去过酒吧那种地方，感觉学生党来这些地方的少，感觉可能是陈霄单方面要来，你无奈就跟着来了
+然后陈霄说我喝酒未必能喝得过你，我感觉也是
+然后就开始唠嗑，when I see you more flexible and skillful while drinking beers，我就想你也是行家
+是见过大世面的人，然后就觉得你和陈霄一样肯定是出入社会的人，和牛逼，咱们不是一个世界的人
+然后第二天再看你，感觉可能是被陈霄带坏的好学生，不像是社会的，晚上误判了
+然后你们回去后咱们就在群里假装科研，感觉你完全是一个萌妹纸啊，简直了！！！
+然后就推翻了你是社会人士的可能性，你是一个好孩子
+后来陈霄也一再说你不是我想的那种人，反而是一个学习和玩两不误的人，可爱贤惠爱学习，温柔善良最爱吃
+So I draw a conclision these days which is we can never judge people by their appearance
+And I appreciate it that I can meet you and make friends with you in this era
+And wait ... I wonder how can I make up 800 words
+...
+I am going to Wuhan in fifteen days.
+
+And I will continue to help you get C program language advanced.
+
+That's all.
+
+2018.11.17
+
+ */
+
+
+
+
+
+
+
+
+
