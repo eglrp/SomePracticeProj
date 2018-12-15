@@ -6,12 +6,18 @@
 #include <cmath>
 #include <iomanip>
 #include <ctime>
+#include <io.h>
 
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/kdtree/kdtree_flann.h>
 #include <pcl/io/io.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/visualization/pcl_visualizer.h>
+
+#include <boost/filesystem.hpp>
+#include <boost/foreach.hpp>
+#include <utility>
 
 namespace LY {
 
@@ -23,34 +29,28 @@ namespace LY {
 
         /** Constructor
          * \brief initialize RoadFPExtractor object
-         * \param radius [set searching radius of each point]
+         * \param minDistance [the minimum of 2 feature point]
          */
-        RoadFPExtractor(float radius = 2.0)
+        RoadFPExtractor(const float minDistance = 0.5f)
             : _cloud(new pcl::PointCloud<PointT>),
               _cloud_feature(new pcl::PointCloud<PointT>) {
-            _radius = radius;
-            _optimized = true;
+            _isFitted = true;
             _isOrigined = false;
-            _minDistance = 0.5f;
+            _minDistance = minDistance;
+            _mean = 0.0f;
+            _variance = 0.0f;
+            _ratio = 0.0f;
         }
 
         /** Desconstrutor */
         ~RoadFPExtractor() {}
 
         /**
-         * \brief reset the radius of searching
-         * \param radius [reset radius]
-         */
-        void setFilterRadius(float radius) {
-            _radius = radius;
-        }
-
-        /**
          * \brief set if optimize the feature point
          * \param opt [flag to optimize]
          */
-        void setOptimized(bool opt) {
-            _optimized = opt;
+        void setFittedFP(bool opt) {
+            _isFitted = opt;
         }
 
         /**
@@ -73,9 +73,8 @@ namespace LY {
          * \brief set input point cloud
          * \param path [the txt file path]
          */
-        void setInputCloud(std::string path) {
+        void setInputCloud(const std::string path) {
             __readDataFromTxt(path);
-            _kdtree.setInputCloud(_cloud);
         }
 
         /**
@@ -85,14 +84,11 @@ namespace LY {
         void setInputCloud(const PointCloudConstPtr &another_cloud) {
             for(auto point : another_cloud->points) {
                 std::vector<float> v;
-                v.push_back(point.x);
-                v.push_back(point.y);
-                v.push_back(point.z);
+                v.push_back(point.x); v.push_back(point.y); v.push_back(point.z);
                 _vecPointCloud.push_back(v);
             }
             _vecPointCloud.shrink_to_fit();
             __sortAndFillCloud();
-            _kdtree.setInputCloud(_cloud);
         }
 
         /**
@@ -101,53 +97,79 @@ namespace LY {
          * \param fp [the output cloud]
          */
         void filterRoadFuturePoint(PointCloudPtr &fp) {
+            std::vector<int> vecInflectionPoint;
+            bool next_is_EdgePoint = false;
             for(int i = 0; i < _cloud->points.size(); ++i) {
-                RFPT type = __isFP(_cloud->points[i], i); \
-                bool flag_used = false;
+                RFPT type = __isFP(_cloud->points[i], i, next_is_EdgePoint); \
                 switch(type) {
                 case EdgePoint:
-                    flag_used = true; break;
-                case InflectionPoint:
-                    flag_used = true; break;
+                    _vecFPIndex.push_back(i); break;
                 case ExtremePoint:
-                    flag_used = true; break;
-                case IsolatedPoint:
-                    flag_used = false; break;
+                    _vecFPIndex.push_back(i); break;
+                case InflectionPoint:
+                    vecInflectionPoint.push_back(i); break;
+                case NormalPoint:
+                    break;
                 }
-                if(flag_used) {
-                    PointT point;
-                    point.x = _cloud->points[i].x;
-                    point.y = _cloud->points[i].y;
-                    point.z = _cloud->points[i].z;
-                    _cloud_feature->points.push_back(point);
+                if(next_is_EdgePoint) {
+                    _vecFPIndex.push_back(++i);
+                    next_is_EdgePoint = false;
+                    continue;
                 }
             }
+            vecInflectionPoint.shrink_to_fit();
 
-            if(_optimized)
+            /** Sparsing the InflectionPoint */
+            std::vector<int> vecInflectionPointOptimized;
+            __sparseFP(vecInflectionPoint, vecInflectionPointOptimized);
+            for(auto index : vecInflectionPointOptimized)
+                _vecFPIndex.push_back(index);
+            _vecFPIndex.shrink_to_fit();
+
+            /** Generate feature point cloud */
+            for(auto index : _vecFPIndex) {
+                PointT point;
+                point.x = _cloud->points[index].x;
+                point.y = _cloud->points[index].y;
+                point.z = _cloud->points[index].z;
+                _cloud_feature->points.push_back(point);
+            }
+
+            /** Check if optimize the result */
+            if(_isFitted)
                 __optimizeFP(fp);
             else {
                 fp->width = _cloud_feature->width; fp->height = 1;
                 fp->points.resize(fp->width * fp->height);
                 pcl::copyPointCloud(*_cloud_feature, *fp);
+                _ratio = (int)((float)_cloud_feature->points.size() / _cloud->points.size() * 100);
             }
         }
 
-    private:
-        PointCloudPtr _cloud, _cloud_feature;
-        std::vector<std::vector<float>> _vecPointCloud;
-        pcl::KdTreeFLANN<PointT> _kdtree;
-        float _radius, _minDistance;
-        bool _optimized, _isOrigined;
+        /**
+         * \brief Get the ratio of feature point to the origin point
+         */
+        int getFPRatio() {
+            return _ratio;
+        }
 
+    private:
+        PointCloudPtr _cloud, _cloud_feature; /* Origin point cloud and feature point cloud */
+        std::vector<std::vector<float>> _vecPointCloud; /* Store coordinate of origin point cloud in the two dimensional vector */
+        std::vector<int> _vecFPIndex; /* The indices of feature point in the sorted origin point cloud */
+        float _minDistance; /* The minimum distance of 2 feature point. The unit is meter(m) */
+        float _mean, _variance; /* The adjacent distance of 2 point in sorted cloud */
+        bool _isFitted, _isOrigined; /* Flag to fiting the FP and keep the origin point */
         typedef enum RoadFeaturePointType {
-            EdgePoint, InflectionPoint, ExtremePoint, IsolatedPoint
+            EdgePoint, ExtremePoint, InflectionPoint, NormalPoint /* Custome Feature Point Type */
         } RFPT;
+        float _ratio; /* The ratio of feature point to the origin point */
 
         /**
          * \brief read point cloud privacy
-         * \param file_path [src path]
+         * \param file_path [data path]
          */
-        void __readDataFromTxt(std::string path) {
+        void __readDataFromTxt(const std::string path) {
             std::ifstream ifs(path);
             if (!ifs) {
                 std::cout << "The txt file is not existed !" << std::endl;
@@ -185,6 +207,7 @@ namespace LY {
                 point.x = v[0]; point.y = v[1]; point.z = v[2];
                 _cloud->points.push_back(point);
             }
+            __calcGlobalAverageDistance(_mean, _variance);
         }
 
         /**
@@ -197,10 +220,38 @@ namespace LY {
          * \param z2
          */
         inline float
-        __calcAngle(float x1, float y1, float z1, float x2, float y2, float z2) {
+        __calcAngleOf2Vectors(float x1, float y1, float z1, float x2, float y2, float z2) {
             float dot = x1 * x2 + y1 * y2 + z1 * z2;
             float square = std::sqrt(x1 * x1 + y1 * y1 + z1 * z1) * std::sqrt(x2 * x2 + y2 * y2 + z2 * z2);
             return (dot / square);
+        }
+
+        /**
+         * \brief Get global Mean and Variance
+         */
+        void __calcGlobalAverageDistance(float &Mean, float &Variance) {
+            /** Calculate distance */
+            std::vector<float> vecDistance;
+            for(int i = 0; i < _vecPointCloud.size() / _vecPointCloud[0].size() - 1; i++) {
+                float deltaX = _vecPointCloud[i + 1][0] - _vecPointCloud[i][0];
+                float deltaY = _vecPointCloud[i + 1][1] - _vecPointCloud[i][1];
+                float deltaZ = _vecPointCloud[i + 1][2] - _vecPointCloud[i][2];
+                float distance = std::sqrt(std::pow(deltaX, 2) + std::pow(deltaY, 2) + std::pow(deltaZ, 2));
+                vecDistance.push_back(distance);
+            }
+            vecDistance.shrink_to_fit();
+
+            /** Calculate Mean */
+            float sum = std::accumulate(vecDistance.begin(), vecDistance.end(), 0.0f);
+            Mean = sum / vecDistance.size();
+
+            /** Calculate Variance */
+            float accum = 0.0f;
+            std::for_each(vecDistance.begin(), vecDistance.end(),
+            [&](const float v) {
+                accum += std::pow(v - Mean, 2);
+            });
+            Variance = std::sqrt(accum / (vecDistance.size() - 1));
         }
 
         /**
@@ -210,7 +261,7 @@ namespace LY {
          * \return    [distance between two points]
          */
         inline  float
-        __getDistance(PointT p1, PointT p2) {
+        __calcDistanceOf2Points(const PointT p1, const PointT p2) {
             return std::sqrt(std::pow((p1.x - p2.x), 2) +
                              std::pow((p1.y - p2.y), 2) +
                              std::pow((p1.z - p2.z), 2));
@@ -222,57 +273,86 @@ namespace LY {
          * \param  index [index of the point]
          * \return       [the type of feature]
          */
-        RFPT __isFP(PointT point, int index) {
+        RFPT __isFP(const PointT point, int index, bool &next_is_EdgePoint) {
             /**  Condition1: EdgePoint */
             if(index == 0 || index == _cloud->points.size() - 1)
                 return EdgePoint;
-            if(__getDistance(_cloud->points[index], _cloud->points[index - 1]) > 0.3 ||
-                    __getDistance(_cloud->points[index], _cloud->points[index + 1]) > 0.3)
+
+            float distanceNext = __calcDistanceOf2Points(_cloud->points[index], _cloud->points[index + 1]);
+            float distancePre = __calcDistanceOf2Points(_cloud->points[index], _cloud->points[index - 1]);
+            if( distanceNext > _mean + _variance || distancePre > _mean + _variance)
                 return EdgePoint;
 
-            /** Contion2: InflectionPoint */
-            int nearest = 20;
-            int index_pre = nearest, index_next = nearest;
-            float n_x1 = 0.0f, n_y1 = 0.0f, n_z1 = 0.0f;
-            while(index_next > 0 && (index + (nearest - index_next) + 1) <= _cloud->points.size() - 1) {
-                n_x1 += _cloud->points[index + nearest - index_next + 1].x - point.x;
-                n_y1 += _cloud->points[index + nearest - index_next + 1].y - point.y;
-                n_z1 += _cloud->points[index + nearest - index_next + 1].z - point.z;
-                index_next--;
+            float deltaX = _cloud->points[index + 1].x - _cloud->points[index].x;
+            float deltaY = _cloud->points[index + 1].y - _cloud->points[index].y;
+            if(std::sqrt(std::pow(deltaX, 2) + std::pow(deltaY, 2)) / distanceNext < 0.707 ) { /* sqrt(2)/2 */
+                next_is_EdgePoint = true;
+                return EdgePoint;
             }
-            n_x1 /= (nearest - index_next); n_y1 /= (nearest - index_next); n_z1 /= (nearest - index_next);
 
-            float n_x2 = 0.0f, n_y2 = 0.0f, n_z2 = 0.0f;
-            while(index_pre > 0 && (index - (nearest - index_pre) - 1) >= 0) {
-                n_x2 += _cloud->points[index - (nearest - index_pre) - 1].x - point.x;
-                n_y2 += _cloud->points[index - (nearest - index_pre) - 1].y - point.y;
-                n_z2 += _cloud->points[index - (nearest - index_pre) - 1].z - point.z;
-                index_pre--;
-            }
-            n_x2 /= (nearest - index_pre); n_y2 /= (nearest - index_pre); n_z2 /= (nearest - index_pre);
+            /** Condition2: ExtremePoint (the field Z is less than neither pre or next) */
+            if(_cloud->points[index + 1].z > _cloud->points[index].z &&
+                    _cloud->points[index - 1].z > _cloud->points[index].z ||
+                    _cloud->points[index + 1].z < _cloud->points[index].z &&
+                    _cloud->points[index - 1].z < _cloud->points[index].z)
+                return ExtremePoint;
 
-            float cosAngle = __calcAngle(n_x1, n_y1, n_z1, n_x2, n_y2, n_z2);
-            if(std::abs(cosAngle) < 0.4)
+            /** Contion3: InflectionPoint */
+            if(std::abs(__calcAngleOf2VectorsByPointNeighbor(point, index, 2)) > 0.99f)
                 return InflectionPoint;
 
-            /** Condition3: ExtremePoint(the higher Z or lower Z is more than 80 percent) */
-            std::vector<int> vecId;
-            std::vector<float> vecDistance;
-            if(_kdtree.nearestKSearch(point, _radius, vecId, vecDistance) > 0) {
-                int count_higher = 0, count_lower = 0;
-                for(auto p : vecId) {
-                    if(_cloud->points[p].z > point.z) {
-                        count_higher++;
-                        continue;
-                    }
-                    count_lower++;
-                }
-                if((float)count_higher / vecId.size() > 0.8f || (float)count_lower / vecId.size() > 0.8f)
-                    return ExtremePoint;
+            /** Condition4: Isolated point */
+            return NormalPoint;
+        }
+
+        /**
+         * \brief Sparse the feature point
+         * \param in [the input point dloud index]
+         * \param out [the output cloud index]
+         */
+        void __sparseFP(const std::vector<int> &in, std::vector<int> &out) {
+            int index = in[0]; out.push_back(index);
+            for(int i = 1; i < in.size(); ++i) {
+                if((__calcDistanceOf2Points(_cloud->points[index], _cloud->points[in[i]])) < _minDistance / 2)
+                    continue;
+                index = in[i];
+                out.push_back(index);
             }
 
-            /** Condition4: Isolated point */
-            return IsolatedPoint;
+            /** Check the last point */
+            if(index != in[in.size() - 1] &&
+                    __calcDistanceOf2Points(_cloud->points[index],
+                                            _cloud->points[in[in.size() - 1]]) > _minDistance / 2)
+                out.push_back(in[in.size() - 1]);
+            out.shrink_to_fit();
+        }
+
+        /**
+         * \brief Calculate the angle between one point neighbor
+         * \param point [being dealed point]
+         * \param idnex [the indice of point cloud]
+         * \param neighbor [select number of neighbor points both positive and negative direction]
+         */
+        float __calcAngleOf2VectorsByPointNeighbor(const PointT point, int index, int neighbor = 5) {
+            int index_pre = neighbor, index_next = neighbor;
+            float n_x1 = 0.0f, n_y1 = 0.0f, n_z1 = 0.0f;
+            while(index_next > 0 && (index + (neighbor - index_next) + 1) <= _cloud->points.size() - 1) {
+                n_x1 += _cloud->points[index + neighbor - index_next + 1].x - point.x;
+                n_y1 += _cloud->points[index + neighbor - index_next + 1].y - point.y;
+                n_z1 += _cloud->points[index + neighbor - index_next + 1].z - point.z;
+                index_next--;
+            }
+            n_x1 /= (neighbor - index_next); n_y1 /= (neighbor - index_next); n_z1 /= (neighbor - index_next);
+
+            float n_x2 = 0.0f, n_y2 = 0.0f, n_z2 = 0.0f;
+            while(index_pre > 0 && (index - (neighbor - index_pre) - 1) >= 0) {
+                n_x2 += _cloud->points[index - (neighbor - index_pre) - 1].x - point.x;
+                n_y2 += _cloud->points[index - (neighbor - index_pre) - 1].y - point.y;
+                n_z2 += _cloud->points[index - (neighbor - index_pre) - 1].z - point.z;
+                index_pre--;
+            }
+            n_x2 /= (neighbor - index_pre); n_y2 /= (neighbor - index_pre); n_z2 /= (neighbor - index_pre);
+            return __calcAngleOf2Vectors(n_x1, n_y1, n_z1, n_x2, n_y2, n_z2);
         }
 
         /**
@@ -280,16 +360,19 @@ namespace LY {
          * \param fp [output cloud]
          */
         void __optimizeFP(PointCloudPtr &fp) {
-            // VoxelGrid filter
+            /** VoxelGrid filter */
             pcl::VoxelGrid<PointT> sor;
             sor.setInputCloud(_cloud_feature);
-            sor.setLeafSize(_minDistance, _minDistance, _minDistance);
+            sor.setLeafSize(0.1f, 0.1f, 0.1f);
             sor.filter(*fp);
+            _ratio = (int)((float)fp->points.size() / _cloud->points.size() * 100);
             if(!_isOrigined)
                 return;
 
             /** Find the nearest 1 point in origin cloud */
             pcl::PointCloud<PointT>::Ptr cloud_temp(new pcl::PointCloud<PointT>);
+            pcl::KdTreeFLANN<PointT> _kdtree;
+            _kdtree.setInputCloud(_cloud);
             for(auto point : fp->points) {
                 std::vector<int> vecId(1);
                 std::vector<float> vecDistance(1);
@@ -301,29 +384,125 @@ namespace LY {
 
     };
 
+} /* LY */
+
+/**
+ * \brief Traverse all files in folder
+ * \param path          [folder path]
+ * \param file_abs_path [the abosolutely path of file]
+ * \param file_name     [file name]
+ */
+void getFileAbsolutePath(std::string root_path,
+                         std::vector<std::string> &file_abs_path,
+                         std::vector<std::string> &file_name ) {
+
+    boost::filesystem::recursive_directory_iterator itor(root_path.c_str());
+    boost::filesystem::recursive_directory_iterator itEnd;
+    for( ; itor != itEnd; ++itor) {
+        boost::filesystem::path file_path = itor->path();
+
+        if(boost::filesystem::is_regular_file(file_path)) {
+            file_abs_path.push_back(file_path.string());
+            file_name.push_back(file_path.filename().string());
+        }
+
+        if(boost::filesystem::is_directory(file_path)) {
+            getFileAbsolutePath(file_path.string(), file_abs_path, file_name);
+        }
+    }
 }
 
-/** TEST */
+/**
+ * \brief open the file end with suffix of .dat
+ * \param  path  [file path]
+ * \param  cloud [input point cloud]
+ * \return       [flag of ifstream]
+ */
+int openAscIIFile(std::string path, pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud) {
+    std::ifstream ifs;
+    ifs.open(path.c_str(), std::ios::in);
+    if(!ifs) {
+        std::cout << "Can not open the file!\n";
+        return -1;
+    }
+
+    std::string lineStr;
+    while (getline(ifs, lineStr)) {
+        std::stringstream ss(lineStr);
+        std::string str;
+        std::vector<std::string> lineArray;
+        int count = 0;
+        while (getline(ss, str, ',') ) {
+            if(count < 2) {
+                count++;
+                continue;
+            }
+            lineArray.push_back(str);
+        }
+        pcl::PointXYZ point;
+        point.x = std::stod(lineArray[0].substr(2));
+        point.y = std::stod(lineArray[1].substr(3));
+        point.z = std::stod(lineArray[2]);
+        cloud->points.push_back(point);
+    }
+    return 1;
+}
+
+/* TEST */
 int main(void) {
-    clock_t start, end;
-    start = clock();
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_fp(new pcl::PointCloud<pcl::PointXYZ>);
+    /** Traversing folder */
+    std::vector<std::string> file_abs_path;
+    std::vector<std::string> file_name;
+    getFileAbsolutePath("F:\\lines0", file_abs_path, file_name);
 
-    LY::RoadFPExtractor<pcl::PointXYZ> fpExtractor;
-    fpExtractor.setInputCloud("C:/Users/Administrator/Desktop/in.txt");
-    fpExtractor.setFilterRadius(2.0f); // recomend
-    fpExtractor.setOptimized(true);
-    fpExtractor.setKeepOrigin(false);
-    fpExtractor.setMinDistanceOfFP(0.5f);
-    fpExtractor.filterRoadFuturePoint(cloud_fp);
+    /** Read every file */
+    for(auto path : file_abs_path) {
 
-    std::ofstream ofs("C:/Users/Administrator/Desktop/out.txt");
-    for(auto point : cloud_fp->points )
-        ofs << point.x << " " << point.y << " " << point.z << std::endl;
-    ofs.close();
+        /** Define origin point cloud */
+        std::cout << "Object:  " << path << std::endl;
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
+        openAscIIFile(path, cloud);
 
-    end = clock();
-    double during = (double)(end - start) / CLOCKS_PER_SEC;
-    std::cout << "Road feature points extracted! Using " << during << "s!" << std::endl;
+        /** Calculate running time */
+        clock_t start, end;
+        start = clock();
+
+        /** Define RoadFPExtractor and extract FP */
+        pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_fp(new pcl::PointCloud<pcl::PointXYZ>);
+        LY::RoadFPExtractor<pcl::PointXYZ> fpExtractor; /* Define the RoadFPExtractor */
+        fpExtractor.setInputCloud(cloud); /* Set input cloud */
+        fpExtractor.setMinDistanceOfFP(0.5f); /** Set minimum distacne */
+        fpExtractor.setFittedFP(true); /* If fiting the result */
+        fpExtractor.setKeepOrigin(true); /* If keep the feature point is the origin point */
+        fpExtractor.filterRoadFuturePoint(cloud_fp); /* Set the  */
+
+        /** Calculate running time */
+        end = clock();
+        double during = (double)(end - start) / CLOCKS_PER_SEC;
+        std::cout << "Road feature points extracted! Using " << during << "s!" << std::endl;
+        std::cout << "The ratio is: " << fpExtractor.getFPRatio() << "%" << std::endl;
+
+        /** Print result */
+        std::ofstream ofs1("C:/Users/Administrator/Desktop/1.txt");
+        for(auto p : cloud->points) {
+            ofs1 << p.x << " " << p.y << " " << p.z << std::endl;
+        }
+        ofs1.close();
+
+        std::ofstream ofs2("C:/Users/Administrator/Desktop/2.txt");
+        for(auto p : cloud_fp->points) {
+            ofs2 << p.x << " " << p.y << " " << p.z << std::endl;
+        }
+        ofs2.close();
+
+        /** Pause the program */
+        int a; std::cout << "Press any kry to conyinue:\n";
+        std::cin >> a;
+        if (a == 666)
+            break;
+        std::cout << "\n--------------------------------------------------------\n\n";
+    }
+
+    return 0;
 }
