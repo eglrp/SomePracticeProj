@@ -65,10 +65,13 @@ namespace LY {
         * \param another_cloud 另一个点云类型，点云类型必须保持一致
         */
         void setInputCloud(const PointCloudConstPtr &another_cloud) {
-            for (auto point : another_cloud->points) {
+            for (size_t i = 0; i < another_cloud->points.size(); ++i) {
                 std::vector<float> v;
-                v.push_back(point.x); v.push_back(point.y); v.push_back(point.z);
+                v.push_back(another_cloud->points[i].x);
+                v.push_back(another_cloud->points[i].y);
+                v.push_back(another_cloud->points[i].z);
                 _vecPointCloud.push_back(v);
+                _size.push_back(i);
             }
             _vecPointCloud.shrink_to_fit();
             __sortAndFillCloud();
@@ -88,8 +91,8 @@ namespace LY {
             /* 2. 大致确定各类型特征点 */
             bool next_is_EdgePoint = false; /* 加快搜索 */
             std::vector<int> vecCoarseIndex;
-            for (int i = 0; i < _cloud->points.size(); ++i) {
-                auto it = std::find(std::begin(vecStdIndex), std::end(vecStdIndex), i);
+            for (size_t i = 0; i < _cloud->points.size(); ++i) {
+                std::vector<int>::iterator it = std::find(std::begin(vecStdIndex), std::end(vecStdIndex), i);
                 if (it != std::end(vecStdIndex))
                     continue;
                 RFPT type = __isFP(_cloud->points[i], i, next_is_EdgePoint);
@@ -134,10 +137,10 @@ namespace LY {
             __optimizeFP(vecInerIndex);
 
             /* 6. 保存结果 */
-            for (auto v : _vecFPIndex) {
-                fp->points.push_back(_cloud->points[v]);
+            for (size_t i = 0; i < _vecFPIndex.size(); ++i) {
+                auto result = std::find(_size.begin(), _size.end(), _vecFPIndex[i]);
+                fp->points.push_back(_cloud->points[std::distance(_size.begin(), result)]);
             }
-
         }
 
     private:
@@ -151,6 +154,7 @@ namespace LY {
             EdgePoint, RightAnglePoint, ExtremePoint, InflectionPoint, NormalPoint /* 道路特征点类型 */
         } RFPT;
         pcl::KdTreeFLANN<PointT> _kdtree; /* Kd 搜索树 */
+        std::vector<int> _size; /* 排序标志位 */
 
         /*
         * \brief 对点云索引 _vecPointCloud 从小到大排序
@@ -162,10 +166,17 @@ namespace LY {
                 }
             } customeCoordiateLess;
 
+            std::sort(_size.begin(), _size.end(), [this](int v1, int v2) {
+                return _vecPointCloud[v1][0] < _vecPointCloud[v2][0];
+            });
+
             std::sort(_vecPointCloud.begin(), _vecPointCloud.end(), customeCoordiateLess);
-            for (auto v : _vecPointCloud) {
+
+            for (size_t i = 0; i < _vecPointCloud.size(); ++i) {
                 PointT point;
-                point.x = v[0]; point.y = v[1]; point.z = v[2];
+                point.x = _vecPointCloud[i][0];
+                point.y = _vecPointCloud[i][1];
+                point.z = _vecPointCloud[i][2];
                 _cloud->points.push_back(point);
             }
             __calcGlobalAverageDistance(_mean, _variance);
@@ -205,10 +216,9 @@ namespace LY {
 
             /* 计算方差 */
             float accum = 0.0f;
-            std::for_each(vecDistance.begin(), vecDistance.end(),
-            [&](const float v) {
-                accum += std::pow(v - Mean, 2);
-            });
+            std::vector<float>::iterator it = vecDistance.begin();
+            for (; it != vecDistance.end(); ++it)
+                accum += std::pow(*it - Mean, 2);
             Variance = std::sqrt(accum / (vecDistance.size() - 1));
         }
 
@@ -282,8 +292,8 @@ namespace LY {
             std::vector<int> vecID(1); std::vector<float> vecDis(1);
             int K = 20, err = 0;
             if (_kdtree.nearestKSearch(point, K, vecID, vecDis) > 0) {
-                for (auto i : vecID) {
-                    if (_cloud->points[i].z <= point.z)
+                for (size_t t = 0; t < vecID.size(); ++t) {
+                    if (_cloud->points[vecID[t]].z <= point.z)
                         err++;
                     if ((float)err / K > 0.2)
                         return RFPT::NormalPoint;
@@ -360,7 +370,6 @@ namespace LY {
             vecSameOritation.push_back(vecBetween[0]);
             for (size_t i = 1; i < vecBetween.size(); ++i) {
                 int tempFlag = __computeRelativeRelation(p1, p2, _cloud->points[vecBetween[i]]);
-
                 if (flag == tempFlag) {
                     vecSameOritation.push_back(vecBetween[i]);
                     if (vecSameOritation.size() != vecBetween.size()) {
@@ -425,7 +434,7 @@ namespace LY {
             float remove = _minDistance / 3;
             for (size_t i = 1; i < _vecFPIndex.size() - 1; ++i) {
                 /* 当前点是否为标准分割点 */
-                auto it = std::find(std::begin(in), std::end(in), i);
+                std::vector<int>::iterator it = std::find(std::begin(in), std::end(in), i);
                 if (it == std::end(in)) { /* 不是特征点，可以进行删除 */
                     /* 判断斜率 */
                     if (__calcDistanceOf2Points(_cloud->points[_vecFPIndex[i]], _cloud->points[_vecFPIndex[i + 1]]) < remove  ||
@@ -436,8 +445,11 @@ namespace LY {
                     }
                 }
             }
-            for (auto v : vecRemove)
-                _vecFPIndex.erase(std::remove(_vecFPIndex.begin(), _vecFPIndex.end(), v), _vecFPIndex.end());
+
+            for (size_t i = 0; i < vecRemove.size(); ++i) {
+                _vecFPIndex.erase(std::remove(_vecFPIndex.begin(), _vecFPIndex.end(), vecRemove[i]), _vecFPIndex.end());
+            }
+
         }
 
         /*
